@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
+
+const WIDTH = 100;
+const HEIGHT = 100;
+const CELL_SIZE = 5;
 
 declare global {
   interface Window {
@@ -6,12 +10,15 @@ declare global {
       importObject: WebAssembly.Imports;
       run(instance: WebAssembly.Instance): Promise<void>;
     };
-    wasmReady?: () => boolean;
+    initBoard?: (w: number, h: number) => void;
+    step?: () => void;
+    getBoard?: () => Uint8Array;
   }
 }
 
 function App() {
-  const [status, setStatus] = useState("loading");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const requestRef = useRef<number>(0);
 
   useEffect(() => {
     const loadWasm = async () => {
@@ -36,21 +43,60 @@ function App() {
 
         void go.run(result.instance);
 
-        const ready = window.wasmReady?.();
-        setStatus(ready ? "ready" : "not ready");
+        if (window.initBoard) {
+          window.initBoard(WIDTH, HEIGHT);
+          startLoop();
+        }
       } catch (error) {
         console.error(error);
-        setStatus("error");
       }
+    };
+
+    const startLoop = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+
+      const render = () => {
+        // 1. Go 側で 1世代進める
+        window.step?.();
+
+        // 2. Go 側から最新のボード状態を取得
+        const cells = window.getBoard?.();
+
+        // 3. Canvas をクリアして描画
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#4ade80"; // 生存セルの色 (tailwind green-400)
+
+        if (cells) {
+          for (let i = 0; i < cells.length; i++) {
+            if (cells[i] === 1) {
+              const x = (i % WIDTH) * CELL_SIZE;
+              const y = Math.floor(i / WIDTH) * CELL_SIZE;
+              ctx.fillRect(x, y, CELL_SIZE - 1, CELL_SIZE - 1);
+            }
+          }
+        }
+
+        requestRef.current = requestAnimationFrame(render);
+      };
+
+      requestRef.current = requestAnimationFrame(render);
     };
 
     void loadWasm();
   }, []);
 
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-bold">Wasm check</h1>
-      <p className="mt-4">status: {status}</p>
+    <main className="flex flex-col items-center p-6">
+      <h1 className="mb-4 text-2xl font-bold">Go Wasm Conway's Game of Life</h1>
+
+      <canvas
+        ref={canvasRef}
+        width={WIDTH * CELL_SIZE}
+        height={HEIGHT * CELL_SIZE}
+        className="rounded border border-gray-700 bg-gray-900 shadow-lg"
+      />
     </main>
   );
 }
