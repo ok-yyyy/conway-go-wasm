@@ -45,12 +45,12 @@ func (b *Board) liveNeighborCount(row, col int) int {
 				continue
 			}
 
-			r, c := row+dr, col+dc
-			if r >= 0 && r < b.height && c >= 0 && c < b.width {
-				if b.Cells[b.getIndex(r, c)] {
-					count++
-				}
-			}
+            r := (row + dr + b.height) % b.height
+            c := (col + dc + b.width) % b.width
+
+            if b.Cells[b.getIndex(r, c)] {
+                count++
+            }
 		}
 	}
 
