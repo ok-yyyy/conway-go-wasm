@@ -3,20 +3,24 @@ package conway
 type Board struct {
 	width  int
 	height int
-	Cells  []bool
+	Cells  []byte
+	next   []byte
 }
 
 func NewBoard(width, height int) *Board {
+	size := width * height
+
 	return &Board{
 		width:  width,
 		height: height,
-		Cells:  make([]bool, width*height),
+		Cells:  make([]byte, size),
+		next:   make([]byte, size),
 	}
 }
 
 // 次の世代へ更新する
 func (b *Board) NextGeneration() {
-	next := make([]bool, len(b.Cells))
+	next := b.next
 
 	for row := 0; row < b.height; row++ {
 		for col := 0; col < b.width; col++ {
@@ -24,15 +28,23 @@ func (b *Board) NextGeneration() {
 			neighbors := b.liveNeighborCount(row, col)
 
 			// ライフゲームのルール
-			if b.Cells[idx] {
-				next[idx] = neighbors == 2 || neighbors == 3
+			if b.Cells[idx] == 1 {
+				if neighbors == 2 || neighbors == 3 {
+					next[idx] = 1
+				} else {
+					next[idx] = 0
+				}
 			} else {
-				next[idx] = neighbors == 3
+				if neighbors == 3 {
+					next[idx] = 1
+				} else {
+					next[idx] = 0
+				}
 			}
 		}
 	}
 
-	b.Cells = next
+	b.Cells, b.next = b.next, b.Cells
 }
 
 // 隣接する生きたセルを数える
@@ -45,12 +57,12 @@ func (b *Board) liveNeighborCount(row, col int) int {
 				continue
 			}
 
-            r := (row + dr + b.height) % b.height
-            c := (col + dc + b.width) % b.width
+			r := (row + dr + b.height) % b.height
+			c := (col + dc + b.width) % b.width
 
-            if b.Cells[b.getIndex(r, c)] {
-                count++
-            }
+			if b.Cells[b.getIndex(r, c)] == 1 {
+				count++
+			}
 		}
 	}
 

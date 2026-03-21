@@ -1,90 +1,89 @@
 import { useEffect, useRef } from "react";
 
-const WIDTH = 100;
-const HEIGHT = 100;
-const CELL_SIZE = 5;
+const BOARD_WIDTH = 150;
+const BOARD_HEIGHT = 150;
+const ALIVE_COLOR = "#000000";
+const STEP_INTERVAL_MS = 50;
+
+const BOARD_SIZE = BOARD_WIDTH * BOARD_HEIGHT;
 
 declare global {
   interface Window {
-    Go: new () => {
-      importObject: WebAssembly.Imports;
-      run(instance: WebAssembly.Instance): Promise<void>;
-    };
     initBoard?: (w: number, h: number) => void;
     step?: () => void;
-    getBoard?: () => Uint8Array;
+    fillBoard?: (dst: Uint8Array) => void;
+  }
+}
+
+function drawBoard(
+  ctx: CanvasRenderingContext2D,
+  cells: Uint8Array,
+  width: number,
+) {
+  ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+  ctx.fillStyle = ALIVE_COLOR;
+
+  for (let index = 0; index < cells.length; index += 1) {
+    if (cells[index] !== 1) {
+      continue;
+    }
+
+    const x = index % width;
+    const y = Math.floor(index / width);
+    ctx.fillRect(x, y, 1, 1);
   }
 }
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const requestRef = useRef<number>(0);
+  const cellsRef = useRef(new Uint8Array(BOARD_SIZE));
+
+  const handleReset = () => {
+    window.initBoard?.(BOARD_WIDTH, BOARD_HEIGHT);
+  };
 
   useEffect(() => {
-    const loadWasm = async () => {
-      try {
-        const base = import.meta.env.BASE_URL;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
 
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = `${base}wasm_exec.js`;
-          script.onload = () => resolve();
-          script.onerror = () =>
-            reject(new Error("failed to load wasm_exec.js"));
-          document.body.appendChild(script);
-        });
+    let cancelled = false;
+    let frameId = 0;
+    let lastStepAt = 0;
 
-        const go = new window.Go();
+    const render = (now: number) => {
+      if (cancelled) return;
 
-        const response = await fetch(`${base}main.wasm`);
-        const bytes = await response.arrayBuffer();
-
-        const result = await WebAssembly.instantiate(bytes, go.importObject);
-
-        void go.run(result.instance);
-
-        if (window.initBoard) {
-          window.initBoard(WIDTH, HEIGHT);
-          startLoop();
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    const startLoop = () => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (!canvas || !ctx) return;
-
-      const render = () => {
-        // 1. Go 側で 1世代進める
+      if (now - lastStepAt > STEP_INTERVAL_MS) {
         window.step?.();
+        lastStepAt = now;
+      }
 
-        // 2. Go 側から最新のボード状態を取得
-        const cells = window.getBoard?.();
+      window.fillBoard?.(cellsRef.current);
+      drawBoard(ctx, cellsRef.current, BOARD_WIDTH);
 
-        // 3. Canvas をクリアして描画
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#4ade80"; // 生存セルの色 (tailwind green-400)
-
-        if (cells) {
-          for (let i = 0; i < cells.length; i++) {
-            if (cells[i] === 1) {
-              const x = (i % WIDTH) * CELL_SIZE;
-              const y = Math.floor(i / WIDTH) * CELL_SIZE;
-              ctx.fillRect(x, y, CELL_SIZE - 1, CELL_SIZE - 1);
-            }
-          }
-        }
-
-        requestRef.current = requestAnimationFrame(render);
-      };
-
-      requestRef.current = requestAnimationFrame(render);
+      frameId = requestAnimationFrame(render);
     };
 
-    void loadWasm();
+    const start = () => {
+      if (cancelled) return;
+
+      if (!window.initBoard || !window.step || !window.fillBoard) {
+        frameId = requestAnimationFrame(start);
+        return;
+      }
+
+      window.initBoard(BOARD_WIDTH, BOARD_HEIGHT);
+      frameId = requestAnimationFrame(render);
+    };
+
+    console.log("Starting animation loop");
+    frameId = requestAnimationFrame(start);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+    };
   }, []);
 
   return (
@@ -93,10 +92,19 @@ function App() {
 
       <canvas
         ref={canvasRef}
-        width={WIDTH * CELL_SIZE}
-        height={HEIGHT * CELL_SIZE}
-        className="rounded border border-gray-700 bg-gray-900 shadow-lg"
+        width={BOARD_WIDTH}
+        height={BOARD_HEIGHT}
+        style={{ imageRendering: "pixelated" }}
+        className="block h-auto w-[92vw] max-w-[320px] border border-gray-300 bg-white sm:max-w-[420px] md:max-w-[560px] lg:max-w-[720px] xl:max-w-[800px]"
       />
+
+      <button
+        type="button"
+        onClick={handleReset}
+        className="mt-4 border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
+      >
+        Reset
+      </button>
     </main>
   );
 }
